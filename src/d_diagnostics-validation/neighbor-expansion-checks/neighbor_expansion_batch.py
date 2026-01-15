@@ -2,8 +2,7 @@
 # ---------------------------------------------------------------------------------
 # Purpose: Parallelized version of neighbor expansion sensitivity batch runner.
 #          Designed for robust multi-process execution on Windows/macOS/Linux.
-# Author: M365 Copilot (for Heather McGrath)
-# Date: 2026-01-06
+
 # ---------------------------------------------------------------------------------
 
 # --- Use non-interactive backend for multi-process figure saving BEFORE pyplot ---
@@ -59,65 +58,208 @@ def _set_dynamic_xaxis(ax, margins):
 # Wide -> long reshape helper
 # ---------------------------------------------------------------------------------
 
-def reshape_all_years_wide_to_long(all_years_csv: str,
-                                   years: Iterable[int] = range(1990, 2024),
-                                   counts_are_fractions: bool = False) -> pd.DataFrame:
+
+def reshape_all_years_wide_to_long(
+    all_years_csv: str,
+    years: Iterable[int] = range(2000, 2024),
+    counts_are_fractions: bool = False,
+    weights: dict | None = None,
+) -> pd.DataFrame:
     """
-    Reshape a wide all_years.csv (with columns like '1990_lt','1990_mid','1990_gt2','1990_gte')
-    into a long DataFrame with: tile_id, year, wet_fraction, dry_fraction, wet_score, dry_score.
+    Reshape a wide all_years.csv (columns like '2000_lt','2000_mid','2000_gt2','2000_gte')
+    into a long DataFrame with:
+      tile_id, year, wet_fraction, dry_fraction, wet_score, dry_score
+
+    - If counts_are_fractions=False (typical): lt/gte/gt2 are counts; normalize by N=lt+gte.
+    - If counts_are_fractions=True: lt/gte/gt2 treated as fractions already in [0,1].
+    - Weights default to w_wet=1.0, w_vwet=1.5, w_dry=1.0, alpha=2.0, beta=1.0.
+    - Enforces gt2 <= gte before normalization to avoid artifacts.
     """
-    W_WET, W_VWET, W_DRY = 1.0, 2.0, 1.0
-    ALPHA, BETA = 2.0, 1.0
+    # Default weights consistent with your methods text
+    W = dict(w_wet=1.0, w_vwet=1.5, w_dry=1.0, alpha=2.0, beta=1.0)
+    if isinstance(weights, dict):
+        W.update(weights)
 
     df_wide = pd.read_csv(all_years_csv, sep=None, engine="python")
     if "tile_id" not in df_wide.columns:
         raise ValueError("Expected 'tile_id' in all_years.csv")
 
-    rows = []
+    out_rows: list[dict] = []
+    wide_cols = set(df_wide.columns)
+
     for _, r in df_wide.iterrows():
-        tile_id = r["tile_id"]
+        tile_id = str(r["tile_id"])
         for yr in years:
-            if not all(f"{yr}_{suffix}" in df_wide.columns for suffix in ["lt", "mid", "gt2", "gte"]):
+            # Require at least lt & gte; gt2 optional; mid not used for normalization.
+            need = {f"{yr}_lt", f"{yr}_gte"}
+            if not need.issubset(wide_cols):
                 continue
-            lt = float(r.get(f"{yr}_lt", np.nan))
-            mid = float(r.get(f"{yr}_mid", np.nan))
-            gt2 = float(r.get(f"{yr}_gt2", np.nan))
+
+            lt  = float(r.get(f"{yr}_lt",  np.nan))
             gte = float(r.get(f"{yr}_gte", np.nan))
+            gt2 = float(r.get(f"{yr}_gt2", 0.0)) if f"{yr}_gt2" in wide_cols else 0.0
+
+            if not np.isfinite(lt) or not np.isfinite(gte):
+                out_rows.append({
+                    "tile_id": tile_id, "year": int(yr),
+                    "wet_fraction": np.nan, "dry_fraction": np.nan,
+                    "wet_score": np.nan, "dry_score": np.nan
+                })
+                continue
+
+            # Clip: gt2 must be subset of wet (gte)
+            if np.isfinite(gt2) and gt2 > gte:
+                gt2 = gte
 
             if counts_are_fractions:
+                # Treat lt, gte, gt2 as fractions; renormalize safeguard
                 N = max((lt if np.isfinite(lt) else 0.0) + (gte if np.isfinite(gte) else 0.0), 1e-9)
-                pct_dry = (lt if np.isfinite(lt) else 0.0) / N
-                pct_wet = (gte if np.isfinite(gte) else 0.0) / N
+                pct_dry  = (lt  if np.isfinite(lt) else 0.0) / N
+                pct_wet  = (gte if np.isfinite(gte) else 0.0) / N
                 pct_vwet = min((gt2 if np.isfinite(gt2) else 0.0) / N, pct_wet)
             else:
-                if not (np.isfinite(lt) and np.isfinite(gte)):
+                N = lt + gte
+                if N <= 0:
                     pct_dry = pct_wet = pct_vwet = np.nan
                 else:
-                    N = lt + gte
-                    if N <= 0:
-                        pct_dry = pct_wet = pct_vwet = np.nan
-                    else:
-                        pct_dry = lt / N
-                        pct_wet = gte / N
-                        pct_vwet = np.nan if not np.isfinite(gt2) else min(gt2 / N, pct_wet)
+                    pct_dry  = lt  / N
+                    pct_wet  = gte / N
+                    pct_vwet = min((gt2 / N) if np.isfinite(gt2) else 0.0, pct_wet)
 
-            if any(np.isnan(x) for x in [pct_dry, pct_wet, pct_vwet]):
+            if any(np.isnan([pct_dry, pct_wet, pct_vwet])):
                 wet_score = dry_score = np.nan
             else:
-                wet_score = (W_WET * pct_wet) + (W_VWET * pct_vwet) - (W_DRY * pct_dry)
-                dry_score = pct_dry - (ALPHA * pct_vwet) - (BETA * pct_wet)
+                wet_score = (W["w_wet"] * pct_wet) + (W["w_vwet"] * pct_vwet) - (W["w_dry"] * pct_dry)
+                dry_score = pct_dry - (W["alpha"] * pct_vwet) - (W["beta"] * pct_wet)
 
-            rows.append({
+            out_rows.append({
                 "tile_id": tile_id,
                 "year": int(yr),
-                "wet_fraction": pct_wet,
-                "dry_fraction": pct_dry,
-                "wet_score": wet_score,
-                "dry_score": dry_score,
+                "wet_fraction": float(pct_wet),
+                "dry_fraction": float(pct_dry),
+                "wet_score": float(wet_score) if np.isfinite(wet_score) else np.nan,
+                "dry_score": float(dry_score) if np.isfinite(dry_score) else np.nan,
             })
 
-    df_series = pd.DataFrame(rows).sort_values(["tile_id", "year"]).reset_index(drop=True)
+    df_series = pd.DataFrame(out_rows).sort_values(["tile_id", "year"]).reset_index(drop=True)
     return df_series
+
+
+def build_series_from_wide_and_scores(
+    all_years_csv: str,
+    scores_csv: str | None = None,
+    years: Iterable[int] = range(2000, 2024),
+    counts_are_fractions: bool = False,
+    weights: dict | None = None,
+    prefer_scores: bool = True,
+) -> pd.DataFrame:
+    """
+    Build a single long 'series_df' using BOTH sources:
+      1) Wide counts file -> wet_fraction, dry_fraction (+ scores if desired)
+      2) Per-year scores file -> wet_score, dry_score (and optionally pct_wet/pct_dry)
+
+    Preference:
+      - If 'prefer_scores' is True, take wet_score/dry_score from the scores CSV when present;
+        otherwise use the scores computed from the wide counts.
+      - Fractions (wet_fraction, dry_fraction) come from the wide file. If the scores CSV
+        offers 'pct_wet'/'pct_dry', they are used only to fill missing values.
+
+    Output columns (guaranteed): tile_id, year, wet_fraction, dry_fraction, wet_score, dry_score
+    """
+    # 1) Long from wide
+    wide_long = reshape_all_years_wide_to_long(
+        all_years_csv=all_years_csv,
+        years=years,
+        counts_are_fractions=counts_are_fractions,
+        weights=weights,
+    )
+
+    if scores_csv is None or not str(scores_csv).strip():
+        # Use only wide-derived values
+        return wide_long
+
+    # 2) Read per-year scores CSV
+    sc = pd.read_csv(scores_csv)
+    # normalize column names if present: use pct_* to fill fractions
+    colmap = {}
+    if "pct_wet" in sc.columns and "wet_fraction" not in sc.columns:
+        colmap["pct_wet"] = "wet_fraction"
+    if "pct_dry" in sc.columns and "dry_fraction" not in sc.columns:
+        colmap["pct_dry"] = "dry_fraction"
+    if colmap:
+        sc = sc.rename(columns=colmap)
+
+    needed = {"tile_id", "year"}
+    if not needed.issubset(set(sc.columns)):
+        raise ValueError("scores_csv must contain 'tile_id' and 'year' columns.")
+
+    # Keep only relevant columns; tolerate presence/absence
+    keep_cols = ["tile_id", "year", "wet_score", "dry_score", "wet_fraction", "dry_fraction"]
+    keep_cols = [c for c in keep_cols if c in sc.columns]
+    sc = sc[keep_cols].copy()
+
+    # Dtypes
+    sc["tile_id"] = sc["tile_id"].astype(str)
+    sc["year"] = sc["year"].astype(int)
+    wide_long["tile_id"] = wide_long["tile_id"].astype(str)
+    wide_long["year"] = wide_long["year"].astype(int)
+
+    # 3) Merge
+    merged = pd.merge(
+        wide_long,
+        sc,
+        on=["tile_id", "year"],
+        how="outer",
+        suffixes=("_from_wide", "_from_scores"),
+    ).sort_values(["tile_id", "year"]).reset_index(drop=True)
+
+    # 4) Compose final columns with precedence
+    def coalesce(*arrs):
+        for a in arrs:
+            if a is None:
+                continue
+            if pd.notna(a):
+                return a
+        return np.nan
+
+    final_rows = []
+    for _, r in merged.iterrows():
+        tile = str(r["tile_id"])
+        yr   = int(r["year"])
+
+        wf_w = r.get("wet_fraction_from_wide", np.nan)
+        df_w = r.get("dry_fraction_from_wide", np.nan)
+        wf_s = r.get("wet_fraction_from_scores", np.nan)
+        df_s = r.get("dry_fraction_from_scores", np.nan)
+
+        # Fractions: prefer wide (authoritative), but fill from scores if wide missing
+        wet_frac = coalesce(wf_w, wf_s)
+        dry_frac = coalesce(df_w, df_s)
+
+        # Scores: prefer external scores if requested and present
+        ws_w = r.get("wet_score_from_wide", np.nan)
+        ds_w = r.get("dry_score_from_wide", np.nan)
+        ws_s = r.get("wet_score_from_scores", np.nan)
+        ds_s = r.get("dry_score_from_scores", np.nan)
+
+        if prefer_scores:
+            wet_sc = coalesce(ws_s, ws_w)
+            dry_sc = coalesce(ds_s, ds_w)
+        else:
+            wet_sc = coalesce(ws_w, ws_s)
+            dry_sc = coalesce(ds_w, ds_s)
+
+        final_rows.append({
+            "tile_id": tile,
+            "year": yr,
+            "wet_fraction": wet_frac,
+            "dry_fraction": dry_frac,
+            "wet_score": wet_sc,
+            "dry_score": dry_sc,
+        })
+
+    series_df = pd.DataFrame(final_rows).sort_values(["tile_id", "year"]).reset_index(drop=True)
+    return series_df
 
 
 # ---------------------------------------------------------------------------------
@@ -178,6 +320,11 @@ def neighbor_expansion_sensitivity_single(
 
     years = df[year_col].values
     scores = df[score_col].values
+        
+    # FRACTIONS (may have one or both). We'll compute separations for both if present.
+    wet_frac = df["wet_fraction"].values if "wet_fraction" in df.columns else None
+    dry_frac = df["dry_fraction"].values if "dry_fraction" in df.columns else None
+
     q = _empirical_quantiles(scores)
     years_base = years[q >= q_base]
 
@@ -213,13 +360,24 @@ def neighbor_expansion_sensitivity_single(
             share_below_base = np.mean([qq < q_base for qq in expanded_q]) if expanded_q else np.nan
             mean_q_exp_only = np.mean(expanded_q) if expanded_q else np.nan
 
-            sep_base = sep_exp = np.nan
-            if have_frac:
-                mask_base = np.isin(years, years_base)
-                mask_exp = np.isin(years, years_exp)
-                sep_base = np.nanmean(frac[mask_base]) - np.nanmean(frac[~mask_base]) if np.any(mask_base) else np.nan
-                sep_exp = np.nanmean(frac[mask_exp]) - np.nanmean(frac[~mask_exp]) if np.any(mask_exp) else np.nan
 
+            # Masks for baseline/expanded selections
+            mask_base = np.isin(years, years_base)
+            mask_exp  = np.isin(years, years_exp)
+
+            # Separation helper
+            def _sep(x, m):
+                if x is None or not np.isfinite(x).any():
+                    return np.nan
+                return np.nanmean(x[m]) - np.nanmean(x[~m])
+
+            sep_wet_base = _sep(wet_frac, mask_base)
+            sep_wet_exp  = _sep(wet_frac, mask_exp)
+            sep_dry_base = _sep(dry_frac, mask_base)
+            sep_dry_exp  = _sep(dry_frac, mask_exp)
+
+
+            
             rows.append({
                 "tile_id": tile_label,
                 "score_col": score_col,
@@ -236,9 +394,13 @@ def neighbor_expansion_sensitivity_single(
                 "jaccard_vs_base": jacc,
                 "share_exp_only_below_q_base": share_below_base,
                 "mean_q_exp_only": mean_q_exp_only,
-                "sep_fraction_base": sep_base,
-                "sep_fraction_exp": sep_exp,
+                # NEW: both separations
+                "sep_wet_base": sep_wet_base,
+                "sep_wet_exp":  sep_wet_exp,
+                "sep_dry_base": sep_dry_base,
+                "sep_dry_exp":  sep_dry_exp,
             })
+
 
     summary_df = pd.DataFrame(rows)
 
@@ -263,38 +425,76 @@ def neighbor_expansion_sensitivity_single(
     axA.legend(loc="best")
 
     # Panel B: over-inclusion vs margin
-    axB = fig.add_subplot(gs[0, 1])
+    axB = fig.add_subplot(gs[0, 1] )
     y_curves_B = []
     for k in windows:
         sel = summary_df[summary_df["window_k"] == k].sort_values("margin")
         y = sel["share_exp_only_below_q_base"].values
         axB.plot(sel["margin"], y, marker="o", label=f"share expanded-only < q_base (k={int(k)})")
         y_curves_B.append(y)
+
     axB.set_title(f"(B) Over-inclusion vs margin\n{tile_label}")
     axB.set_xlabel("Neighbor margin (quantile units)")
     axB.set_ylabel("Share below q_base")
     _set_dynamic_xaxis(axB, summary_df["margin"].values)
-    ymin_B, ymax_B = _finite_min_max(y_curves_B, default_ymin=0.0, default_ymax=1.0, pad_ratio=0.08)
-    axB.set_ylim(ymin_B, ymax_B)
+
+    # NEW: robust dynamic y-limits for Panel B (ignores NaNs, pads; fallback [0,1])
+    if y_curves_B:
+        vals = np.concatenate([np.asarray(v, float) for v in y_curves_B])
+        finite = vals[np.isfinite(vals)]
+        if finite.size:
+            ymin, ymax = float(np.nanmin(finite)), float(np.nanmax(finite))
+            if np.isclose(ymin, ymax, atol=1e-12):
+                pad = max(abs(ymin), 1.0) * 0.08
+                axB.set_ylim(ymin - pad, ymax + pad)
+            else:
+                pad = max((ymax - ymin) * 0.08, 1e-6)
+                axB.set_ylim(ymin - pad, ymax + pad)
+        else:
+            axB.set_ylim(0.0, 1.0)
+    else:
+        axB.set_ylim(0.0, 1.0)
+
     axB.legend(loc="best")
     axB.grid(True, alpha=0.3)
+
 
     # Panel C: stability (Jaccard) vs margin
     axC = fig.add_subplot(gs[1, 0])
     y_curves_C = []
+    style = {1: ("-", "o"), 2: ("--", "s")}  # k=1 solid, k=2 dashed
+
     for k in windows:
         sel = summary_df[summary_df["window_k"] == k].sort_values("margin")
         y = sel["jaccard_vs_base"].values
-        axC.plot(sel["margin"], y, marker="o", label=f"Jaccard (k={int(k)})")
+        ls, mk = style.get(int(k), (":", "^"))
+        axC.plot(sel["margin"], y, marker=mk, linestyle=ls, label=f"Jaccard (k={int(k)})")
         y_curves_C.append(y)
     axC.set_title(f"(C) Stability vs margin\n{tile_label}")
     axC.set_xlabel("Neighbor margin (quantile units)")
     axC.set_ylabel("Jaccard vs baseline")
     _set_dynamic_xaxis(axC, summary_df["margin"].values)
-    ymin_C, ymax_C = _finite_min_max(y_curves_C, default_ymin=0.0, default_ymax=1.0, pad_ratio=0.08)
-    axC.set_ylim(ymin_C, ymax_C)
+    
+    # Robust dynamic y-limits for Panel C
+    if y_curves_C:
+        vals = np.concatenate([np.asarray(v, float) for v in y_curves_C])
+        finite = vals[np.isfinite(vals)]
+        if finite.size:
+            ymin, ymax = float(np.nanmin(finite)), float(np.nanmax(finite))
+            if np.isclose(ymin, ymax, atol=1e-12):
+                pad = max(abs(ymin), 1.0) * 0.08
+                axC.set_ylim(ymin - pad, ymax + pad)
+            else:
+                pad = max((ymax - ymin) * 0.08, 1e-6)
+                axC.set_ylim(ymin - pad, ymax + pad)
+        else:
+            axC.set_ylim(0.0, 1.0)
+    else:
+        axC.set_ylim(0.0, 1.0)
+
     axC.legend(loc="best")
     axC.grid(True, alpha=0.3)
+
 
     # Panel D: timeline of baseline vs expanded-only for best (m, k)
     q_neigh = q_base - best_m
@@ -391,8 +591,8 @@ def batch_neighbor_expansion_sensitivity(
     series_df: pd.DataFrame,
     justification_df: pd.DataFrame,
     score_type: str = "wet",  # "wet" or "dry"
-    margins: Tuple[float, ...] = (0.0, 0.01, 0.02, 0.03),
-    windows: Tuple[int, ...] = (1, 2),
+    margins: Tuple[float, ...] = (0.0, 0.01, 0.02, 0.03, 0.05),
+    windows: Tuple[int, ...] = (1, 2, 3),
     output_dir: str = "neighbor_sensitivity_outputs",
     years_col: str = "year",
     n_workers: Optional[int] = None,
@@ -483,8 +683,8 @@ def batch_neighbor_expansion_sensitivity(
                "singleton_rate_exp": "median",
                "jaccard_vs_base": "median",
                "share_exp_only_below_q_base": "median",
-               "sep_fraction_base": "median",
-               "sep_fraction_exp": "median",
+              # "sep_fraction_base": "median",
+              # "sep_fraction_exp": "median",
            }))
     out_agg_csv = os.path.join(output_dir, f"neighbor_sensitivity_aggregate_{score_type}.csv")
     agg.to_csv(out_agg_csv, index=False)
@@ -513,7 +713,7 @@ if __name__ == "__main__":
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument("--margins", type=str, default="0.0,0.01,0.02,0.03",
                         help="Comma-separated margins (quantile units)")
-    parser.add_argument("--windows", type=str, default="1,2",
+    parser.add_argument("--windows", type=str, default="1,2,3,5",
                         help="Comma-separated window sizes (k)")
     parser.add_argument("--reshape", action="store_true",
                         help="If set, expects --series to be a wide all_years.csv and reshapes it")
@@ -525,26 +725,25 @@ if __name__ == "__main__":
     windows = tuple(int(x) for x in args.windows.split(",") if x)
 
     # Example paths (edit or pass via CLI)
-    if args.series is None:
-        ALL_YEARS_CSV = r"D:\\Research\\FS-2dot0\\results\\newtop5\\2000-2023\\all_years.csv"
-        # default: reshape wide -> long
-        series_df = reshape_all_years_wide_to_long(
-            all_years_csv=ALL_YEARS_CSV,
-            years=range(1990, 2024),
-            counts_are_fractions=False,
-        )
-    else:
-        if args.reshape:
-            series_df = reshape_all_years_wide_to_long(
-                all_years_csv=args.series,
-                years=range(1990, 2024),
-                counts_are_fractions=False,
-            )
-        else:
-            series_df = pd.read_csv(args.series)
+   
+    
+    # default: reshape wide -> long
+    
+    # Example paths (replace with your actuals or wire into argparse/config)
+    ALL_YEARS_CSV = r"D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\data\\all_years-combined-final.csv"
+    SCORES_CSV    = r"D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\wet_dry_scores.csv"   # the one that has tile_id,year,wet_score,dry_score,(pct_*)
+
+    series_df = build_series_from_wide_and_scores(
+        all_years_csv=ALL_YEARS_CSV,
+        scores_csv=SCORES_CSV,                # set to None to use only wide file
+        years=range(2000, 2024),
+        counts_are_fractions=False,           # your wide file holds counts, not fractions
+        weights=dict(w_wet=1.0, w_vwet=1.5, w_dry=1.0, alpha=2.0, beta=1.0),
+        prefer_scores=True  )                # prefer scores from the per-year CSV
+
 
     if args.just is None:
-        JUST_CSV = r"D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\1990-2023percentile_justification.csv"
+        JUST_CSV = r"D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\2000-2023percentile_justification.csv"
         justification_df = pd.read_csv(JUST_CSV)
     else:
         justification_df = pd.read_csv(args.just)

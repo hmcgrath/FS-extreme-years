@@ -190,13 +190,13 @@ def extract_daily_observations(
 xlssheet = "D:\\Research\\FS-2dot0\\hydat\\DLY_LEVELS.xlsx"   # or DLY_FLOWS.xlsx
 station_number = "01AL002" #01AL004 
 #station_number = "05OG001" 
-#station_number = "09AC001"
+#station_number = "09AB001"
 year_pre = 1990
 year_post = 2023
 
 stats = plot_gauge_record_with_percentiles(
     xlssheet,
-    "01AL004",
+    "09AB001",
     start_year=year_pre,
     end_year=year_post,
     p_high=99,

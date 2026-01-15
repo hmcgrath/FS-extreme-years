@@ -1,19 +1,43 @@
 #!/usr/bin/env python3
-
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-
+import json
 # -------------------------
 # CONFIG
 # -------------------------
-CSV_PATH = "D:\\Research\\FS-2dot0\\results\\newtop5\\2000-2023\\all_years.csv"        # <-- update
-OUTPUT_DIR = Path("D:\\Research\\FS-2dot0\\results\\newtop5\\2000-2023\\OrigFScounts-outputs")
+COLORS = {
+    "dry": "#caafb8",
+    "wet": "#6fbfee",
+    "wet_plus": "#1154b9"
+}
+
+# -------------------------------   
+# Config loader
+# -------------------------------
+def load_config(cfg_path: str) -> dict:
+    with open(cfg_path, "r") as f:
+        return json.load(f)
+    
+config_file = "D://Research//FS-2dot0/results//WetDryTrendsPaper//scripts//configs//plot-pixel-count-wet-dry-years.json"
+cfg = load_config(config_file)
+
+# ---- Paths ----
+CSV_PATH = cfg["paths"]["input_csv_local"]
+outdir = cfg["paths"]["output_dir_local"]
+
+
+os.makedirs(outdir, exist_ok=True)
+
+OUTPUT_DIR = os.path.join(outdir, "pixel_counts_wet_dry_years") 
+
 GROUP_BY_PREFIX = True        # group by first 2 chars of tile_id
 PREFIX_LEN = 2
 
-OUTPUT_DIR.mkdir(exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+OUTPUT_DIR = Path(OUTPUT_DIR)
 
 # -------------------------
 # LOAD DATA
@@ -156,8 +180,8 @@ def plot_national_wet_trend(wide_df, output_dir):
         x='year',
         y='wetpixels',
         marker='o',
-        scatter_kws={'s':50, 'color':'#00a2ff'},
-        line_kws={'color':'#ff4500', 'lw':2}
+        scatter_kws={'s':50, 'color':COLORS['wet']},
+        line_kws={'color':COLORS['dry'], 'lw':2}
     )
 
     plt.title("National Wet Pixel Count Over Time with Trend")
@@ -246,7 +270,7 @@ def plot_single_tile_wet_counts(wide_df, tile_id, output_dir):
     df_tile = df_tile.set_index('year').reindex(years, fill_value=0).reset_index()
 
     fig, ax = plt.subplots(figsize=(14,5))
-    ax.plot(df_tile['year'], df_tile['mid'], marker='o', color='#00a2ff', label='Wet Pixels')
+    ax.plot(df_tile['year'], df_tile['mid'], marker='o', color=COLORS['wet'], label='Wet Pixels')
 
     ax.set_title(f"Wet Pixel Counts Over Time — Tile {tile_id}")
     ax.set_xlabel("Year")
@@ -265,7 +289,7 @@ import pandas as pd
 
 def plot_tile_wet_dry_heatmap(wide_df, tile_ids, output_dir):
     """
-    Plot heatmaps of Dry / Wet / Very Wet fractions over time for up to 3 tile_ids.
+    Plot heatmaps of Dry / Wet / Wet+ fractions over time for up to 3 tile_ids.
     
     Parameters
     ----------
@@ -284,12 +308,11 @@ def plot_tile_wet_dry_heatmap(wide_df, tile_ids, output_dir):
     df_tiles['total'] = df_tiles['lt'] + df_tiles['gte'] + df_tiles['gt2']
     df_tiles['dry_frac'] = df_tiles['lt'] / df_tiles['total']
     df_tiles['wet_frac'] = df_tiles['gte'] / df_tiles['total']
-    df_tiles['very_wet_frac'] = df_tiles['gt2'] / df_tiles['total']
+    df_tiles['wet_plus_frac'] = df_tiles['gt2'] / df_tiles['total']
 
     # Prepare heatmap DataFrames
-    fractions = ['dry_frac', 'wet_frac', 'very_wet_frac']
-    titles = ['Dry', 'Wet', 'Very Wet']
-
+    fractions = ['dry_frac', 'wet_frac', 'wet_plus_frac']
+    titles = ['Dry', 'Wet', 'Wet_plus']
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), constrained_layout=True)
 
     for i, frac in enumerate(fractions):
@@ -299,7 +322,7 @@ def plot_tile_wet_dry_heatmap(wide_df, tile_ids, output_dir):
         sns.heatmap(
             pivot,
             ax=axes[i],
-            cmap='YlGnBu' if frac != 'very_wet_frac' else 'Greens',
+            cmap='YlGnBu' if frac != 'wet_plus_frac' else 'Greens',
             annot=True,
             fmt=".2f",
             cbar=i == 2  # only show colorbar on last subplot
@@ -308,7 +331,7 @@ def plot_tile_wet_dry_heatmap(wide_df, tile_ids, output_dir):
         axes[i].set_xlabel("Year")
         axes[i].set_ylabel("Tile ID")
 
-    plt.suptitle("Dry / Wet / Very Wet Fractions Over Time per Tile", fontsize=16)
+    plt.suptitle("Dry / Wet / Wet+ Fractions Over Time per Tile", fontsize=16)
     plt.savefig(output_dir / "tile_wet_dry_heatmap.png", dpi=300)
     plt.close()
 
@@ -318,7 +341,7 @@ import pandas as pd
 
 def plot_tile_wet_dry_stacked_heatmap(wide_df, tile_ids, output_dir):
     """
-    Plot a single stacked heatmap per tile showing Dry / Wet / Very Wet fractions over time.
+    Plot a single stacked heatmap per tile showing Dry / Wet / Wet+ fractions over time.
     
     Parameters
     ----------
@@ -334,10 +357,10 @@ def plot_tile_wet_dry_stacked_heatmap(wide_df, tile_ids, output_dir):
     df_tiles['total'] = df_tiles['lt'] + df_tiles['gte'] + df_tiles['gt2']
     df_tiles['dry_frac'] = df_tiles['lt'] / df_tiles['total']
     df_tiles['wet_frac'] = df_tiles['gte'] / df_tiles['total']
-    df_tiles['very_wet_frac'] = df_tiles['gt2'] / df_tiles['total']
+    df_tiles['wet_plus_frac'] = df_tiles['gt2'] / df_tiles['total']
 
-    fractions = ['dry_frac', 'wet_frac', 'very_wet_frac']
-    colors = ['#f0a500', '#00a2ff', '#2ca02c']  # Dry, Wet, Very Wet
+    fractions = ['dry_frac', 'wet_frac', 'wet_plus_frac']
+    colors = [COLORS["dry"], COLORS["wet"], COLORS["wet_plus"]]  # Dry, Wet, Wet+
 
     # Prepare a 2D array: rows = tiles * 3 (stacked fractions), columns = years
     years = sorted(df_tiles['year'].unique())
@@ -356,7 +379,7 @@ def plot_tile_wet_dry_stacked_heatmap(wide_df, tile_ids, output_dir):
     im = ax.imshow(heatmap_array, aspect='auto', cmap='YlGnBu')
 
     # Color overlay per fraction
-    # We'll use a custom mapping for Dry/Wet/Very Wet for clarity
+    # We'll use a custom mapping for Dry/Wet/Wet+ for clarity
     for i, frac in enumerate(fractions):
         cmap = plt.cm.get_cmap('YlOrBr' if frac=='dry_frac' else ('Blues' if frac=='wet_frac' else 'Greens'))
         start_row = i
@@ -369,7 +392,7 @@ def plot_tile_wet_dry_stacked_heatmap(wide_df, tile_ids, output_dir):
     ax.set_xticks(np.arange(len(years)))
     ax.set_xticklabels(years)
     ax.set_xlabel("Year")
-    ax.set_title("Stacked Dry / Wet / Very Wet Fractions per Tile")
+    ax.set_title("Stacked Dry / Wet / Wet+ Fractions per Tile")
     plt.colorbar(im, ax=ax, label="Fraction")
     plt.tight_layout()
     plt.savefig(output_dir / "tile_wet_dry_stacked_heatmap.png", dpi=300)
@@ -381,7 +404,7 @@ import pandas as pd
 
 def plot_tile_wet_dry_continuous_heatmap(wide_df, tile_ids, output_dir):
     """
-    Plot a compact heatmap of Dry / Wet / Very Wet fractions over time per tile.
+    Plot a compact heatmap of Dry / Wet / Wet+ fractions over time per tile.
     Each tile is a single row, with colors stacked per fraction per year.
     
     Parameters
@@ -398,12 +421,11 @@ def plot_tile_wet_dry_continuous_heatmap(wide_df, tile_ids, output_dir):
     df_tiles['total'] = df_tiles['lt'] + df_tiles['gte'] + df_tiles['gt2']
     df_tiles['dry_frac'] = df_tiles['lt'] / df_tiles['total']
     df_tiles['wet_frac'] = df_tiles['gte'] / df_tiles['total']
-    df_tiles['very_wet_frac'] = df_tiles['gt2'] / df_tiles['total']
+    df_tiles['wet_plus_frac'] = df_tiles['gt2'] / df_tiles['total']
 
     years = sorted(df_tiles['year'].unique())
-    fractions = ['dry_frac', 'wet_frac', 'very_wet_frac']
-    colors = ['#f0a500', '#00a2ff', '#2ca02c']  # Dry, Wet, Very Wet
-
+    fractions = ['dry_frac', 'wet_frac', 'wet_plus_frac']
+    colors = [COLORS["dry"], COLORS["wet"], COLORS["wet_plus"]]  # Dry, Wet, Wet+
     fig, ax = plt.subplots(figsize=(len(years)*0.6 + 2, len(tile_ids)*0.8))
 
     for i, tile in enumerate(tile_ids):
@@ -428,11 +450,11 @@ def plot_tile_wet_dry_continuous_heatmap(wide_df, tile_ids, output_dir):
     ax.set_yticks([])
     ax.set_xlim(-1, len(years))
     ax.set_ylim(0, len(tile_ids))
-    ax.set_title("Dry / Wet / Very Wet Fractions Over Time per Tile")
+    ax.set_title("Dry / Wet / Wet+ Fractions Over Time per Tile")
     
     # Create custom legend
     from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor=c, label=l) for c,l in zip(colors, ['Dry','Wet','Very Wet'])]
+    legend_elements = [Patch(facecolor=c, label=l) for c,l in zip(colors, ['Dry','Wet','Wet+'])]
     ax.legend(handles=legend_elements, loc='upper right')
 
     plt.tight_layout()
@@ -444,12 +466,12 @@ import pandas as pd
 
 def plot_single_tile_stacked_bar(wide_df, tile_id, output_dir):
     """
-    Plot a stacked bar chart of Dry / Wet / Very Wet fractions over time for a single tile.
+    Plot a stacked bar chart of Dry / Wet / Wet+ fractions over time for a single tile.
 
     Parameters
     ----------
     wide_df : pd.DataFrame
-        Must contain columns: ['tile_id', 'year', 'lt', '_mid', 'gt2'].
+        Must contain columns: ['tile_id', 'year', 'lt', 'mid', 'gt2'].
     tile_id : str
         Tile ID to plot.
     output_dir : pathlib.Path or str
@@ -459,21 +481,21 @@ def plot_single_tile_stacked_bar(wide_df, tile_id, output_dir):
     df_tile = wide_df[wide_df['tile_id'] == tile_id].copy()
     #df_tile['_mid'] = df_tile['_gte'] - df_tile['gt2']
     # Ensure full year range
-    years = list(range(1990, 2024))
+    years = list(range(2000, 2024))
     df_tile = df_tile.set_index('year').reindex(years, fill_value=0).reset_index()
 
     # Compute fractions
     df_tile['total'] = df_tile['lt'] + df_tile['mid'] + df_tile['gt2']
     df_tile['dry_frac'] = df_tile['lt'] / df_tile['total']
     df_tile['wet_frac'] = df_tile['mid'] / df_tile['total']
-    df_tile['very_wet_frac'] = df_tile['gt2'] / df_tile['total']
+    df_tile['wet_plus_frac'] = df_tile['gt2'] / df_tile['total']
 
     fig, ax = plt.subplots(figsize=(14,5))
 
-    ax.bar(df_tile['year'], df_tile['dry_frac'], label='Dry', color='#f0a500')
-    ax.bar(df_tile['year'], df_tile['wet_frac'], bottom=df_tile['dry_frac'], label='Wet', color='#00a2ff')
-    ax.bar(df_tile['year'], df_tile['very_wet_frac'], 
-           bottom=df_tile['dry_frac'] + df_tile['wet_frac'], label='Very Wet', color='#2ca02c')
+    ax.bar(df_tile['year'], df_tile['dry_frac'], label='Dry', color=COLORS['dry'])
+    ax.bar(df_tile['year'], df_tile['wet_frac'], bottom=df_tile['dry_frac'], label='Wet', color=COLORS['wet'])
+    ax.bar(df_tile['year'], df_tile['wet_plus_frac'], 
+           bottom=df_tile['dry_frac'] + df_tile['wet_frac'], label='Wet+', color=COLORS['wet_plus'])
 
     ax.set_title(f"Stacked Wet/Dry Fractions Over Time — Tile {tile_id}")
     ax.set_xlabel("Year")
@@ -492,6 +514,9 @@ def plot_national_wet_dry(wide_df, output_dir):
     Aggregates all tiles before computing fractions.
     """
 
+    DRY_COLOR = COLORS["dry"]        # light gray
+    WET_COLOR = COLORS["wet"]        # blue
+    
     national = (
         wide_df
         .groupby("year", as_index=False)[["lt", "gte"]]
@@ -503,17 +528,22 @@ def plot_national_wet_dry(wide_df, output_dir):
     national["wet_pct"] = national["gte"] / national["total"]
 
     fig, ax = plt.subplots(figsize=(14, 5))
+    ax.bar(
+        national["year"],
+        national["dry_pct"],
+        label="Dry",
+        color=DRY_COLOR,
+        alpha=0.85
+    )
 
-    ax.bar(national["year"],
-           national["dry_pct"],
-           label="Dry",
-           alpha=0.7)
-
-    ax.bar(national["year"],
-           national["wet_pct"],
-           bottom=national["dry_pct"],
-           label="Wet",
-           alpha=0.7)
+    ax.bar(
+        national["year"],
+        national["wet_pct"],
+        bottom=national["dry_pct"],
+        label="Wet",
+        color=COLORS['wet'],
+        alpha=0.85
+    )
 
     ax.set_title("National Wet vs Dry Fraction Over Time")
     ax.set_xlabel("Year")
@@ -539,7 +569,7 @@ wide["total"] = wide["lt"] + wide["gte"]
 
 wide["dry_pct"]       = wide["lt"]  / wide["total"]
 wide["wet_pct"]       = wide["gte"] / wide["total"]
-wide["very_wet_pct"]  = wide["gt2"] / wide["total"]
+wide["wet_plus_pct"]  = wide["gt2"] / wide["total"]
 wide["mid_wet_pct"]   = (wide["gte"] - wide["gt2"]) / wide["total"]
 
 # -------------------------
@@ -562,10 +592,10 @@ grouped = (
 for grp, sub in grouped.groupby("group"):
     fig, ax = plt.subplots(figsize=(12, 5))
 
-    ax.bar(sub["year"], sub["dry_pct"], label="Dry", alpha=0.7)
+    ax.bar(sub["year"], sub["dry_pct"], label="Dry", color=COLORS["dry"], alpha=0.7)
     ax.bar(sub["year"], sub["wet_pct"],
            bottom=sub["dry_pct"],
-           label="Wet", alpha=0.7)
+           label="Wet", color=COLORS["wet"], alpha=0.7)
 
     ax.set_title(f"Wet vs Dry Fraction Over Time (Group {grp})")
     ax.set_ylabel("Fraction of pixels")

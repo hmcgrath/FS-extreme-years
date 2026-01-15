@@ -122,13 +122,12 @@ def parse_tile_id_from_filename(path: str) -> str:
 # ----------------------------
 
 def main():
-    #print("\n=== Pixel Exceedance Validation: Interactive Join + Plot + Skill ===")
+    print("\n=== Pixel Exceedance Validation: Interactive Join + Plot + Skill ===")
 
-    #completed_csv = ask_path("Path to Completed per-year results CSV (e.g., results_1990-2023_38_ALL.csv):")
-    #just_csv      = `ask_path`("Path to justification CSV (e.g., 1990-2023percentile_justification.csv):")
-
-    completed_csv = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\validation\\01AL000\\results_1990-2023_38_01AL000.csv"
-    just_csv      = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\1990-2023percentile_justification.csv"
+    #completed_csv = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\tile-stats\\results_1990-2023_39_01AL000.csv"
+    #completed_csv = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\tile-stats\\results_1990-2023_39_05OG000.csv"
+    completed_csv = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\tile-stats\\results_1990-2023_39_09AB000.csv"
+    just_csv      = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\2000-2023percentile_justification.csv"
     # Read both tables
     df = pd.read_csv(completed_csv)
     just = pd.read_csv(just_csv)
@@ -204,6 +203,8 @@ def main():
 
     # Naming
     out_dir = os.path.dirname(completed_csv)
+    out_dir = os.path.join(out_dir, "skill_per_tile_plots")
+    os.makedirs(out_dir, exist_ok=True)
     base = os.path.splitext(os.path.basename(completed_csv))[0]
     m = re.search(r"results_([0-9\-]+)_(\d+)_", base)  # extract 'years' and 'XX' if present
     years_part = f"{m.group(1)}_{m.group(2)}" if m else "series"

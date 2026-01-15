@@ -98,7 +98,7 @@ def best_split(y: np.ndarray, min_seg_len: int) -> tuple[Optional[int], float]:
     improvement = total - best_cost
     return best_k, improvement
 
-def binary_segmentation(y: np.ndarray, years: np.ndarray, min_seg_len: int = 3, penalty_lambda: float = 2.0) -> list[int]:
+def binary_segmentation(y: np.ndarray, years: np.ndarray, min_seg_len: int = 3, penalty_lambda: float = 5.0) -> list[int]:
     n = y.size
     cps = []
     segments = [(0, n)]
@@ -225,15 +225,59 @@ def process_tile_extended(tile_id, g, years, weights, R_return_period, n_boot, b
     q_d_med, _, _ = sens_d[block_sizes[0]]
     wet_sel = set(years[s_w >= rl_w])
     dry_sel = set(years[s_d >= rl_d])
+
+    """  Remove the “select all years” fallback
     if not wet_sel:
         wet_sel = set(years)
     if not dry_sel:
-        dry_sel = set(years)
+        dry_sel = set(years) """
+            
+    ##If no exceedance, use a small top-K fallback (or leave empty)
+    K_fallback = 3
+    if not wet_sel:
+        # select top-K years by wet score
+        top_idx = np.argsort(s_w)[-K_fallback:]
+        wet_sel = set(years[top_idx])
+    if not dry_sel:
+        top_idx = np.argsort(s_d)[-K_fallback:]
+        dry_sel = set(years[top_idx])
+
+    #######################################
+        # When dry_sel is empty OR too large, pick a controlled Top-K subset
+    if (not dry_sel) or (len(dry_sel) > 12):
+
+        # Prefer selecting from non-wet years
+        candidates = [y for y in years if y not in wet_sel]
+
+        if candidates:
+            s_d_nonwet = np.array([
+                s_d[np.where(years == y)[0][0]] for y in candidates
+            ])
+
+            # Select Top-K driest among candidates
+            K = min(K_fallback, len(candidates))
+            top_idx_local = np.argsort(s_d_nonwet)[-K:]
+
+            dry_sel = set(candidates[i] for i in top_idx_local)
+            used_topk_dry = True
+
+        else:
+            # If everything is wet (rare), fall back to global Top-K
+            K = min(K_fallback, len(years))
+            top_idx = np.argsort(s_d)[-K:]
+
+            dry_sel = set(years[top_idx])
+            used_topk_dry = True
+
+
+
+
     # Neighbor expansion
     wet_neighbors = sorted(list(expand_neighbors(dict(zip(years,s_w)), wet_sel, rl_w, 'high', neighbor_margin)))
     dry_neighbors = sorted(list(expand_neighbors(dict(zip(years,s_d)), dry_sel, rl_d, 'high', neighbor_margin)))
     dry_sel -= wet_sel  # Prioritize wet if overlap
     dry_neighbors = [y for y in dry_neighbors if y not in wet_sel]
+    
     # Change-points
     cps_wet = binary_segmentation(s_w, years)
     cps_dry = binary_segmentation(s_d, years)
@@ -334,20 +378,24 @@ if __name__ == '__main__':
     #incsv = sys.argv[1] if len(sys.argv) > 1 else "all_years.csv"
     #outfolder = sys.argv[2] if len(sys.argv) > 2 else "JustificationRobust_parallel"
     #acf_dir = sys.argv[3] if len(sys.argv) > 3 else "acf_plots"
-    incsv = "D:\\Research\\FS-2dot0\\results\\newtop5\\2000-2023\\all_years.csv"
-    outcsv = "D:\\Research\\FS-2dot0\\results\\newtop5\\2000-2023\\all-equalweights"
+    incsv = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\data\\all_years_99.csv"
+    #ncsv = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\data\\all_years-combined-final-sample.csv"
+    outcsv = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\99-wp15-change"
+    #incsv = "/gpfs/fs5/nrcan/nrcan_geobase/work/dev/hem000/FSI2/extremeyears/data/all_years-combined-final.csv"
+    #outcsv = "/gpfs/fs5/nrcan/nrcan_geobase/work/dev/hem000/FSI2/extremeyears/results"
+
     acf_dir = outcsv + "\\_acf_plots"
 
     df = pd.read_csv(incsv)
     summary_path = run_selection_robust_parallel_extended(
         df_wide=df,
         outfolder=outcsv,
-        year_start=1990,
+        year_start=2000,
         year_end=2023,
         R_return_period=10,
         n_boot=300,
-        block_sizes=[3, 5, 10],
-        weights={'w_wet':1.0,'w_vwet':1.0,'w_dry':1.0,'alpha':2.0,'beta':1.0},
+        block_sizes=[ 3, 2, 5, 10],
+        weights={'w_wet':1.0,'w_vwet':1.5,'w_dry':1.0,'alpha':2.0,'beta':1.0},
         neighbor_margin=0.02,
         random_state=42,
         export_config=True,

@@ -1,0 +1,52 @@
+
+{
+  "csv_input": "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\2000-2023percentile_justification.csv",
+  "csv_output": "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\processed\\2000-2023percentile_justification_processed.csv",
+
+  "shapefile_input": "D:/Research/FS-2dot0/results/WetDryTrendsPaper/gisdata/geometry_nhn.shp",
+
+  "output_directory": "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\figures\\f5",
+
+  "year_columns": {
+    "wet": "selected_wet_years",
+    "wet_neighbors": "selected_wet_years_neighbors",
+    "dry": "selected_dry_years",
+    "dry_neighbors": "selected_dry_years_neighbors"
+  },
+
+  "decades": [2000, 2010, 2020],
+
+  "decade_weights": {
+    "2000": 10,
+    "2010": 10,
+    "2020": 4
+  },
+
+  "colormaps": {
+    "wet": "Blues",
+    "dry": "Reds"
+  },
+
+  "bivariate": {
+    "wet_decade_colors": {
+      "2000": "#0066cc",
+      "2010": "#00994c",
+      "2020": "#e67e22"
+    },
+    "dry_decade_colors": {
+      "2000": "#d73027",
+      "2010": "#fc8d59",
+      "2020": "#fee08b"
+    },
+    "lightness": {
+      "0": 1.0,
+      "1": 1.25,
+      "2": 0.75
+    }
+  },
+
+  "crs_settings": {
+    "target_crs": "EPSG:3979",
+    "enforce_projected": true
+  }
+}

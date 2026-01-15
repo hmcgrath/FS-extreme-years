@@ -1,0 +1,14 @@
+
+{
+  "input_csv": "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\data\\all_years-combined-final.csv",
+  "output_csv": "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\wet_dry_scores.csv",
+  "weights": {
+    "w_wet": 1.0,
+    "w_vwet": 1.5,
+    "w_dry": 1.0,
+    "alpha": 2.0,
+    "beta": 1.0
+  },
+  "years": [2000, 2023],
+  "include_flags": true
+}

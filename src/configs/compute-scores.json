@@ -1,0 +1,19 @@
+
+{
+  "paths": {
+    "input_csv_local": "D:/Research/FS-2dot0/results/WetDryTrendsPaper/supplement/data/all_years-combined-final.csv",
+    "output_dir_local": "D:/Research/FS-2dot0/results/WetDryTrendsPaper/supplement/results",
+    "justification_local": "D:/Research/FS-2dot0/results/WetDryTrendsPaper/supplement/results/2000-2023percentile_justification.csv",
+    "recommended_q_local": "D:/Research/FS-2dot0/results/WetDryTrendsPaper/supplement/results/recommended_q_config.csv"
+  },
+  "analysis": {
+    "year_start": 2000,
+    "year_end": 2023,
+    "group_by_prefix": true,
+    "single_tiles_to_plot": ["01AL000", "05OG000", "09AB000"]
+  },
+  "plot": {
+    "styles": { "palette": "tab10", "dpi": 300 }
+  },
+  "logging": { "level": "INFO" }
+}

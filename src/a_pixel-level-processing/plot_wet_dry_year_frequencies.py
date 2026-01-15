@@ -6,7 +6,7 @@ from collections import defaultdict
 # -----------------------------
 # USER INPUT
 # -----------------------------
-CSV_PATH = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\1990-2023percentile_justification.csv"  # <-- set to your justification CSV path
+CSV_PATH = "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\2000-2023percentile_justification.csv"  # <-- set to your justification CSV path
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,7 +18,7 @@ import matplotlib.colors as mcolors
 # -----------------------------
 CSV_PATH = CSV_PATH
 
-outfolder = r"D:\Research\FS-2dot0\results\WetDryTrendsPaper\supplement"
+outfolder = r"D:\Research\FS-2dot0\results\WetDryTrendsPaper\supplement\results\figures_wet_dry_year_frequencies"
 os.makedirs(outfolder, exist_ok=True)
 
 WET_COL = "selected_wet_years"
@@ -192,5 +192,6 @@ plot_grouped_bars(wet_decades, "decade", "Wet Years by Decade")
 plot_grouped_bars(dry_decades, "decade", "Dry Years by Decade")
 
 # Per-WU plots
-plot_per_wu(wet_decades, "decade", "Wet Years by Decade")
-plot_per_wu(dry_decades, "decade", "Dry Years by Decade")
+
+plot_per_wu(wet_years, "year", "Wet Years (Annual)")
+plot_per_wu(dry_years, "year", "Dry Years (Annual)")

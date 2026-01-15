@@ -1,0 +1,40 @@
+
+{
+  "data": {
+    "csv_path": "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\supplement\\results\\2000-2023percentile_justification.csv"
+  },
+  "logic": {
+    "conditions": ["wet", "dry"],
+    "block_sizes": [3, 5, 10],
+    "columns": {
+      "wet_hi_template": "bootstrap_q_wet_hi_b{b}",
+      "wet_lo_template": "bootstrap_q_wet_lo_b{b}",
+      "dry_hi_template": "bootstrap_q_dry_hi_b{b}",
+      "dry_lo_template": "bootstrap_q_dry_lo_b{b}"
+    },
+    "labels": {"wet": "Wet","dry": "Dry"},
+     "ci_width_threshold": 0.15
+  },
+  "plot": {
+    "figure_size": [12, 6],
+    "palette": "Set2",
+    "inner": "quartile",
+    "style": "whitegrid",
+    "context": "notebook",
+    "title": "Comparison of Uncertainty Ranges in Return-Level Thresholds by Block Size",
+    "x_label": "Condition and Block Size",
+    "y_label": "Uncertainty Range (Return-Level Threshold)",
+    "grid": {
+      "enabled": true,
+      "linestyle": "--",
+      "alpha": 0.5
+    },
+    "category_order": null
+  },
+  "output": {
+    "png_path": "D:\\Research\\FS-2dot0\\results\\WetDryTrendsPaper\\Figure6-violint_blocksize.png",
+    "dpi": 300,
+    "show": false
+  }
+}
+
