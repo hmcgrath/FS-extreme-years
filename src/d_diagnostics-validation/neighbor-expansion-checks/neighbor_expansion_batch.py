@@ -591,7 +591,7 @@ def batch_neighbor_expansion_sensitivity(
     series_df: pd.DataFrame,
     justification_df: pd.DataFrame,
     score_type: str = "wet",  # "wet" or "dry"
-    margins: Tuple[float, ...] = (0.0, 0.01, 0.02, 0.03, 0.05),
+    margins: Tuple[float, ...] = (0.0, 0.01, 0.03, 0.05),
     windows: Tuple[int, ...] = (1, 2, 3),
     output_dir: str = "neighbor_sensitivity_outputs",
     years_col: str = "year",

@@ -1,0 +1,45 @@
+{
+  "raster_dir": "/gpfs/fs5/nrcan/nrcan_geobase/work/data/fs-historic",
+  "shapefile_path": "/gpfs/fs5/nrcan/nrcan_geobase/work/dev/hem000/FSI2/shape/nhn-land.shp",
+  "output_dir": "/gpfs/fs5/nrcan/nrcan_geobase/work/dev/hem000/FSI2/extremeyears/results",
+  "output_dir_local" : "D:/Research/FS-2dot0/results/WetDryTrendsPaper/supplement/results",
+  "thresholds": {
+    "wet": 38.3,
+    "wet_min_integer": 39,
+    "wet_plus": 88
+  },
+  "nodata": 255,
+  "window_size": 1024,
+  "year_filename_regex": "(\\d{4})",
+  "top_n_default": 5,
+  "extreme_weight_default": 3.0,
+  "lt_weight_default": 0.5,
+  "parallel": true,
+  "max_workers": 8,
+
+  "analysis": {
+    "year_start": 2000,
+    "year_end": 2023,
+    "R_return_period": 10,
+    "n_boot": 300,
+    "block_sizes": [3, 5, 10],
+    "neighbor_margin": 0.02,
+    "random_state": 42,
+    "weights": {
+      "w_wet": 1.0,
+      "w_vwet": 1.5,
+      "w_dry": 1.0,
+      "alpha": 2.0,
+      "beta": 1.0
+    }
+  },
+
+  "paths": {
+    "input_csv_local": "D:/Research/FS-2dot0/results/WetDryTrendsPaper/supplement/data/all_years-combined-final.csv",
+	"input_csv": "/gpfs/fs5/nrcan/nrcan_geobase/work/dev/hem000/FSI2/extremeyears/data/all_years-combined-final.csv",
+    "acf_plot_subdir": "_acf_plots"
+	
+  }
+
+}
+

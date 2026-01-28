@@ -1,0 +1,17 @@
+#! /bin/bash
+#SBATCH --cluster=gpsc8
+#SBATCH --partition=standard 
+#SBATCH --account=nrcan_geobase
+#SBATCH --job-name=envelope
+#SBATCH --output=/gpfs/fs5/nrcan/nrcan_geobase/work/dev/hem000/FSI2/envelope.out
+#SBATCH --nodes=1 
+#SBATCH --cpus-per-task=20 
+#SBATCH --time=12:45:00
+#SBATCH --mem=300G 
+#SBATCH --qos=low
+#SBATCH --comment="image=registry.maze.science.gc.ca/ssc-hpcs/generic-job:ubuntu22.04"
+# Set path to right conda env. 
+source /space/partner/nrcan/geobase/work/opt/miniconda-datacube/etc/profile.d/conda.sh
+#conda activate datacube-mrdtm
+conda activate geo_ml_env
+python /gpfs/fs5/nrcan/nrcan_geobase/work/dev/hem000/FSI2/flood-susceptibility-main/src/mosaic/envelope.py
